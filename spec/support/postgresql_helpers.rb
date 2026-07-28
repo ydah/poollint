@@ -43,5 +43,6 @@ end
 RSpec.configure do |config|
   config.after(:suite) do
     PoolLintPostgreSQLRecord.connection_handler.clear_all_connections!
+    PoolLint.configuration.logger = nil
   end
 end

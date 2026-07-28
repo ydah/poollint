@@ -72,3 +72,5 @@ module PoolLint
     end
   end
 end
+
+require_relative "poollint/railtie" if defined?(Rails::Railtie)

@@ -29,7 +29,10 @@ Metrics/MethodLength:
 
 RSpec/ExampleLength:
   Exclude:
+    - "spec/hooks/checkin_mutex_spec.rb"
+    - "spec/hooks/concurrency_spec.rb"
     - "spec/hooks/integration_spec.rb"
+    - "spec/hooks/multi_database_spec.rb"
   Max: 12
 
 RSpec/MultipleExpectations:
