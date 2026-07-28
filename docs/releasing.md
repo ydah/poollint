@@ -5,7 +5,7 @@
 3. Review the version in
    `lib/poollint/version.rb`.
 4. Build and inspect the package with `bundle exec rake build` and
-   `gem contents --show-install-dir poollint`.
+   `gem specification pkg/poollint-X.Y.Z.gem files`.
 5. Commit the version, create an annotated `vX.Y.Z` tag, and push
    the commit and tag.
 6. Publish with MFA using `gem push pkg/poollint-X.Y.Z.gem`.

@@ -173,7 +173,8 @@ baseline, dirty keys, and a bounded suspicion ring.
 
 ## Performance
 
-The non-dirty boundary path performs no SQL. Run the local benchmark with:
+The non-dirty boundary path performs no SQL. From a source checkout, run the
+local benchmark with:
 
 ```sh
 bundle exec ruby benchmark/boundary_overhead.rb

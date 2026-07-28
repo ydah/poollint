@@ -12,7 +12,7 @@ with `scripts/spikes/pool_locking.rb`.
 | 7.2.3 | no | yes | connection removed; next checkout succeeds | connection stranded; next checkout times out |
 | 8.0.2 | no | yes | connection removed; next checkout succeeds | connection stranded; next checkout times out |
 
-Run an individual measurement with:
+From a source checkout, run an individual measurement with:
 
 ```sh
 AR_VERSION=7.2.3 ruby scripts/spikes/pool_locking.rb
