@@ -7,8 +7,6 @@ module PoolLint
   class ConnectionState
     IVAR = :@poollint_state
 
-    attr_reader :baseline
-
     def self.fetch(connection, suspicion_limit:)
       connection.instance_variable_get(IVAR) ||
         connection.instance_variable_set(IVAR, new(suspicion_limit: suspicion_limit))
@@ -26,6 +24,10 @@ module PoolLint
 
     def baseline?
       @mutex.synchronize { !@baseline.nil? }
+    end
+
+    def baseline
+      @mutex.synchronize { @baseline }
     end
 
     def capture_baseline(snapshot)

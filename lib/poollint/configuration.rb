@@ -46,6 +46,8 @@ module PoolLint
     private
 
     def default_environment
+      return Rails.env.to_s if defined?(Rails) && Rails.respond_to?(:env)
+
       ENV.fetch("RAILS_ENV", ENV.fetch("RACK_ENV", nil))
     end
 

@@ -2,6 +2,8 @@ plugins:
   - rubocop-rspec
 
 AllCops:
+  Exclude:
+    - "gemfiles/*"
   NewCops: enable
   SuggestExtensions: false
   TargetRubyVersion: 3.2
@@ -19,14 +21,22 @@ Metrics/BlockLength:
   Exclude:
     - "spec/**/*"
 
+Metrics/ClassLength:
+  Max: 170
+
 Metrics/MethodLength:
   Max: 15
 
 RSpec/ExampleLength:
+  Exclude:
+    - "spec/hooks/integration_spec.rb"
   Max: 12
 
 RSpec/MultipleExpectations:
   Max: 3
+
+RSpec/InstanceVariable:
+  Enabled: false
 
 RSpec/SpecFilePathFormat:
   Enabled: false

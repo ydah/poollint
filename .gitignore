@@ -9,6 +9,7 @@
 /spec/reports/
 /tmp/
 Gemfile.lock
+/gemfiles/*.lock
 .rspec_status
 *.swp
 *.gem
