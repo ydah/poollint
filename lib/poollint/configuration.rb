@@ -5,6 +5,7 @@ module PoolLint
     INSPECTION_POINTS = %i[checkout checkin].freeze
     MODES = %i[log raise].freeze
 
+    attr_reader :environment
     attr_accessor :allowed_settings,
                   :check_probability,
                   :ignore_if,
@@ -17,8 +18,8 @@ module PoolLint
                   :watched_settings
 
     def initialize(environment: nil)
-      environment ||= default_environment
-      test_environment = environment.to_s == "test"
+      @environment = environment || default_environment
+      test_environment = @environment.to_s == "test"
       @allowed_settings = {}
       @check_probability = 1.0
       @ignore_if = nil
@@ -29,6 +30,10 @@ module PoolLint
       @rebaseline_after_report = true
       @suspicion_limit = 20
       @watched_settings = []
+    end
+
+    def test_environment?
+      environment.to_s == "test"
     end
 
     def validate!

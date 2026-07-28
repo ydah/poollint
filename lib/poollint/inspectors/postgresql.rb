@@ -107,11 +107,10 @@ module PoolLint
 
       def capture_with_timeout(connection, names)
         snapshot = nil
+        timeout_ms = Integer(@configuration.inspection_timeout_ms)
         ExecutionState.while_inspecting do
           connection.transaction(requires_new: true, joinable: false) do
-            connection.execute(
-              "SET LOCAL statement_timeout = #{@configuration.inspection_timeout_ms}"
-            )
+            connection.execute("SET LOCAL statement_timeout = #{timeout_ms}")
             snapshot = capture_snapshot(connection, names)
             raise ActiveRecord::Rollback
           end

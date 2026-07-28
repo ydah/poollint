@@ -46,9 +46,12 @@ module PoolLint
     def log_warning(message)
       logger = configuration.logger
       logger ||= ActiveRecord::Base.logger if defined?(ActiveRecord::Base)
-      return logger.warn("[PoolLint] #{message}") if logger
+      formatted = "[PoolLint] #{message}"
+      return warn_with_logger(logger, formatted) if logger
 
-      Kernel.warn("[PoolLint] #{message}")
+      Kernel.warn(formatted)
+    rescue StandardError
+      nil
     end
 
     def reset_configuration!(environment: nil)
@@ -61,9 +64,15 @@ module PoolLint
 
     private
 
+    def warn_with_logger(logger, message)
+      logger.warn(message)
+    rescue StandardError => e
+      Kernel.warn("#{message} (logger failed: #{e.class}: #{e.message})")
+    end
+
     def warn_about_checkin_in_production
       return unless configuration.inspection_point == :checkin
-      return if Configuration.new.send(:default_environment).to_s == "test"
+      return if configuration.test_environment?
 
       log_warning(
         ":checkin inspection runs while the Active Record pool mutex is held; " \

@@ -14,6 +14,7 @@ RSpec.describe PoolLint::Configuration do
 
     expect(configuration.inspection_point).to eq(:checkin)
     expect(configuration.mode).to eq(:raise)
+    expect(configuration).to be_test_environment
   end
 
   it "rejects an invalid probability" do

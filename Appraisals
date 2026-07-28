@@ -14,3 +14,8 @@ appraise "rails-8.0" do
   gem "activerecord", "~> 8.0.0"
   gem "railties", "~> 8.0.0"
 end
+
+appraise "rails-main" do
+  gem "activerecord", github: "rails/rails"
+  gem "railties", github: "rails/rails"
+end

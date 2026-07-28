@@ -12,7 +12,7 @@ module PoolLint
         end
         return unless configuration.inspection_point == inspection_point
         return unless state.dirty?
-        return if rand > configuration.check_probability
+        return if rand >= configuration.check_probability
 
         inspect_and_notify(connection, state, inspection_point, configuration)
       rescue LeakDetected

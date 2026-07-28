@@ -17,4 +17,16 @@ RSpec.describe PoolLint do
   ensure
     described_class.reset_configuration!(environment: "production")
   end
+
+  it "does not propagate logger failures into pool callbacks" do
+    described_class.reset_configuration!(environment: "production")
+    logger = instance_double(Logger)
+    allow(logger).to receive(:warn).and_raise("logger unavailable")
+    described_class.configuration.logger = logger
+    allow(Kernel).to receive(:warn)
+
+    expect { described_class.log_warning("inspection failed") }.not_to raise_error
+  ensure
+    described_class.reset_configuration!(environment: "production")
+  end
 end
