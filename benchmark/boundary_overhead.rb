@@ -6,7 +6,7 @@ require "poollint"
 
 PoolLint.reset_configuration!(environment: "production")
 
-connection = Object.new
+connection = Struct.new(:adapter_name).new("PostgreSQL")
 state = PoolLint.connection_state(connection)
 state.capture_baseline(Object.new)
 

@@ -35,11 +35,13 @@ module PoolLint
       def initialize(configuration)
         @configuration = configuration
         @allowed_settings = AllowedSettings.new(configuration.allowed_settings)
+        @capture = PostgreSQLCapture.new(configuration)
       end
 
       def establish_baseline(connection, state)
         snapshot = capture_with_timeout(connection, settings_for(state))
         state.capture_baseline(snapshot)
+        ConnectionState.attach(connection, state)
         snapshot
       end
 
@@ -49,6 +51,10 @@ module PoolLint
         return unless state.dirty?
 
         snapshot = capture_with_timeout(connection, settings_for(state, baseline))
+        unless state_attached?(connection, state)
+          return reattach_after_reconnect(connection, state, snapshot)
+        end
+
         report = build_report(baseline, snapshot, state, inspection_point)
         state.finish_inspection(
           snapshot: snapshot,
@@ -110,28 +116,7 @@ module PoolLint
       end
 
       def capture_with_timeout(connection, names)
-        snapshot = nil
-        timeout_ms = (@configuration.inspection_timeout * 1000).ceil
-        ExecutionState.while_inspecting do
-          connection.transaction(requires_new: true, joinable: false) do
-            original_timeout = capture_statement_timeout(connection, names)
-            connection.execute("SET LOCAL statement_timeout = #{timeout_ms}")
-            snapshot = capture_snapshot(connection, names)
-            restore_statement_timeout(snapshot, original_timeout)
-            raise ActiveRecord::Rollback
-          end
-        end
-        snapshot
-      rescue StandardError => e
-        raise InspectionTimeout, "inspection exceeded statement_timeout" if query_canceled?(e)
-
-        raise
-      end
-
-      def capture_statement_timeout(connection, names)
-        return unless names.include?("statement_timeout")
-
-        connection.select_value("SELECT current_setting('statement_timeout')")
+        @capture.call(connection, names) { capture_snapshot(connection, names) }
       end
 
       def comparison_for(name, baseline_value, current_value)
@@ -166,20 +151,10 @@ module PoolLint
         )
       end
 
-      def query_canceled?(error)
-        active_record_timeout = defined?(ActiveRecord::QueryCanceled) &&
-                                error.is_a?(ActiveRecord::QueryCanceled)
-        active_record_timeout || error.cause&.class&.name == "PG::QueryCanceled"
-      end
-
-      def restore_statement_timeout(snapshot, original_timeout)
-        return unless original_timeout
-
-        captured = snapshot.settings.fetch("statement_timeout")
-        snapshot.settings["statement_timeout"] = SettingValue.new(
-          setting: original_timeout,
-          reset_value: captured.reset_value
-        )
+      def reattach_after_reconnect(connection, state, snapshot)
+        state.capture_baseline(snapshot)
+        ConnectionState.attach(connection, state)
+        nil
       end
 
       def setting_changes(baseline, snapshot)
@@ -189,6 +164,10 @@ module PoolLint
           change = comparison_for(name, baseline.settings[name], current)
           change unless change && @allowed_settings.allow?(name, change.current)
         end
+      end
+
+      def state_attached?(connection, state)
+        ConnectionState.attached?(connection, state)
       end
 
       def settings_for(state, baseline = nil)

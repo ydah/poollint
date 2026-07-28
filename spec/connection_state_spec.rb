@@ -56,4 +56,15 @@ RSpec.describe PoolLint::ConnectionState do
 
     expect(second).to be(first)
   end
+
+  it "can detect and restore lifecycle detachment" do
+    connection = Object.new
+    state = described_class.fetch(connection, suspicion_limit: 2)
+
+    described_class.remove(connection)
+    expect(described_class.attached?(connection, state)).to be(false)
+
+    described_class.attach(connection, state)
+    expect(described_class.attached?(connection, state)).to be(true)
+  end
 end

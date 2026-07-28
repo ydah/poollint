@@ -7,9 +7,17 @@ module PoolLint
   class ConnectionState
     IVAR = :@poollint_state
 
+    def self.attach(connection, state)
+      connection.instance_variable_set(IVAR, state)
+    end
+
+    def self.attached?(connection, state)
+      connection.instance_variable_get(IVAR).equal?(state)
+    end
+
     def self.fetch(connection, suspicion_limit:)
       connection.instance_variable_get(IVAR) ||
-        connection.instance_variable_set(IVAR, new(suspicion_limit: suspicion_limit))
+        attach(connection, new(suspicion_limit: suspicion_limit))
     end
 
     def self.remove(connection)

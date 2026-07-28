@@ -4,8 +4,8 @@ module PoolLint
   module Inspectors
     module_function
 
-    def for(connection, configuration)
-      return PostgreSQL.new(configuration) if connection.adapter_name == "PostgreSQL"
+    def for(connection)
+      return PostgreSQL if connection.adapter_name == "PostgreSQL"
 
       nil
     end

@@ -39,11 +39,10 @@ RSpec.describe PoolLint::InspectionRunner do
     state.capture_baseline(:baseline)
     state.mark_dirty(kind: :set, setting: "role", sql: "SET ROLE x", call_site: nil)
     PoolLint.configuration.check_probability = 0.0
-    inspector = instance_spy(PoolLint::Inspectors::PostgreSQL)
-    allow(PoolLint::Inspectors::PostgreSQL).to receive(:new).and_return(inspector)
+    allow(PoolLint::Inspectors::PostgreSQL).to receive(:new)
 
     described_class.call(connection, :checkout)
-    expect(inspector).not_to have_received(:inspect)
+    expect(PoolLint::Inspectors::PostgreSQL).not_to have_received(:new)
   end
 
   it "does not attach state or execute SQL for unsupported adapters" do

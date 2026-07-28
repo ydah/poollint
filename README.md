@@ -180,7 +180,7 @@ bundle exec ruby benchmark/boundary_overhead.rb
 ```
 
 On 2026-07-28, a local Apple Silicon / Ruby 4.0 run measured the non-dirty
-boundary at **4.37 million iterations/second (228.6 ns/iteration)**. CI verifies
+boundary at **3.57 million iterations/second (280.4 ns/iteration)**. CI verifies
 behavior rather than asserting a machine-specific timing threshold.
 
 ## Development
