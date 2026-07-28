@@ -8,10 +8,10 @@ Gem::Specification.new do |spec|
   spec.authors = ["Yudai Takada"]
   spec.email = ["t.yudai92@gmail.com"]
 
-  spec.summary = "Detect PostgreSQL session state leaked through Active Record connection pools"
+  spec.summary = "Detect database session state leaked through Active Record connection pools"
   spec.description = <<~DESCRIPTION
     PoolLint checks Active Record connections at pool boundaries and reports
-    PostgreSQL settings or advisory locks that leaked from a previous borrower.
+    PostgreSQL or MySQL settings and locks that leaked from a previous borrower.
   DESCRIPTION
   spec.homepage = "https://github.com/ydah/poollint"
   spec.license = "MIT"

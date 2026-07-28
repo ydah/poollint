@@ -1,27 +1,28 @@
 # PoolLint
 
-PoolLint detects PostgreSQL session state that leaks through an Active
-Record connection pool.
+PoolLint detects PostgreSQL and MySQL session state that leaks through
+an Active Record connection pool.
 
 A request can run `SET ROLE tenant_a`, acquire a session advisory lock, or
-change a custom GUC and forget to restore it. Active Record then returns that
-connection to the pool. A later request borrows the same database session and
-silently inherits the previous request's privileges, tenant selection, timeout,
-or lock. PoolLint records suspicious SQL and verifies the connection at
-a pool boundary before reporting the leak.
+change a custom GUC. On MySQL it can change `time_zone` or retain a `GET_LOCK`.
+If the request forgets to restore that state, Active Record returns the
+connection to the pool and a later request silently inherits it.
+PoolLint records suspicious SQL and verifies the connection at a pool
+boundary before reporting the leak.
 
 The gem observes and reports. It never resets application state automatically.
 
 ## Requirements
 
-| Ruby | Rails / Active Record | Database |
-| --- | --- | --- |
-| 3.2–3.4 | 7.1 | PostgreSQL 16 |
-| 3.2–3.4 | 7.2 | PostgreSQL 16 |
-| 3.2–3.4 | 8.0 | PostgreSQL 16 |
+| Ruby | Rails / Active Record | PostgreSQL | MySQL |
+| --- | --- | --- | --- |
+| 3.2–3.4 | 7.1 | 16 (`pg`) | 8.4 (`mysql2`, `trilogy`) |
+| 3.2–3.4 | 7.2 | 16 (`pg`) | 8.4 (`mysql2`, `trilogy`) |
+| 3.2–3.4 | 8.0 | 16 (`pg`) | 8.4 (`mysql2`, `trilogy`) |
 
-Rails main runs in CI as an allowed-to-fail compatibility signal. PostgreSQL is
-the only adapter supported by v0.1. MySQL support is planned for v0.2.
+CI runs both databases and both MySQL adapters for every supported Ruby/Rails
+combination. Rails main runs as an allowed-to-fail compatibility signal.
+Unsupported adapters, including SQLite3, are left untouched.
 
 ## Installation
 
@@ -45,6 +46,7 @@ PoolLint.configure do |config|
   config.rebaseline_after_report = true
 
   config.watched_settings = PoolLint::DEFAULT_PG_SETTINGS
+  config.mysql_watched_settings = PoolLint::DEFAULT_MYSQL_SETTINGS
   config.track_custom_gucs = true
   config.check_advisory_locks = true
   config.suspicion_log_size = 20
@@ -73,10 +75,10 @@ is intended for tests because callback exceptions can prevent a connection
 from returning to the available queue.
 
 `check_probability` samples dirty inspections only. Initial baseline capture is
-never sampled. `inspection_timeout` is expressed in seconds and applied with
-`SET LOCAL statement_timeout`, so the inspector restores the caller's setting
-when its short transaction ends. The former millisecond accessor remains
-available as `inspection_timeout_ms`.
+never sampled. `inspection_timeout` is expressed in seconds. PostgreSQL applies
+it with `SET LOCAL statement_timeout` in a short transaction; MySQL applies a
+`MAX_EXECUTION_TIME` hint to inspector queries. The former millisecond accessor
+remains available as `inspection_timeout_ms`.
 
 ### Inspection point trade-offs
 
@@ -93,14 +95,14 @@ Rails 7.1, 7.2, and 8.0 is recorded in
 
 ## Detection scope
 
-| Detected | Not detected |
-| --- | --- |
-| session `SET` and `RESET` changes | `SET LOCAL` |
-| `SET ROLE` | `SET TRANSACTION` |
-| `SET SESSION AUTHORIZATION` | transaction-scoped advisory locks |
-| custom GUCs such as `myapp.tenant_id` | temporary tables |
-| session advisory locks owned by the connection backend | `LISTEN` registrations |
-| differences in both baseline/current key directions | prepared statements |
+| Database | Detected | Not detected |
+| --- | --- | --- |
+| PostgreSQL | session `SET` and `RESET` changes | `SET LOCAL` and `SET TRANSACTION` |
+| PostgreSQL | `SET ROLE` and `SET SESSION AUTHORIZATION` | transaction-scoped advisory locks |
+| PostgreSQL | custom GUCs such as `myapp.tenant_id` | temporary tables and `LISTEN` registrations |
+| PostgreSQL | session advisory locks owned by the connection backend | prepared statements |
+| MySQL | configured `@@SESSION` variables | unconfigured session variables |
+| MySQL | `GET_LOCK` retained by the current connection | transaction metadata locks |
 
 SQL classification accepts leading Query Logs or Marginalia comments, lowercase
 keywords, and line breaks. Inspector SQL is guarded against re-entry. Suspicious
@@ -123,6 +125,22 @@ Advisory lock inspection is restricted to `pid = pg_backend_pid()`. Locks owned
 by another pooled connection cannot be attributed to the inspected connection
 and are ignored.
 
+`DEFAULT_MYSQL_SETTINGS` contains `sql_mode`, `time_zone`,
+`transaction_isolation`, `transaction_read_only`, `lock_wait_timeout`, and
+`max_execution_time`. Replace or extend `mysql_watched_settings` to inspect
+other session variables. Variable names are validated before they are used in
+inspector SQL.
+
+MySQL user-level locks are confirmed through
+`performance_schema.metadata_locks`, restricted to the thread whose
+`PROCESSLIST_ID` is `CONNECTION_ID()`. Confirmed entries carry
+`confidence: :confirmed`. If the metadata lock instrument is disabled or access
+to Performance Schema is denied, PoolLint falls back to the observed
+balance of `GET_LOCK`, `RELEASE_LOCK`, and `RELEASE_ALL_LOCKS`, and reports
+`confidence: :inferred`. Inferred results can be conservative because SQL
+observation cannot know whether `GET_LOCK` succeeded or resolve a dynamically
+computed lock name.
+
 ## Suppression and notifications
 
 Suppress reports emitted within a known-safe block:
@@ -140,8 +158,8 @@ report and can apply an application-specific policy.
 
 Every non-ignored report emits `leaked_state.poollint` through
 `ActiveSupport::Notifications`. Its payload contains `inspection_point`,
-`setting_changes`, `advisory_locks`, and `suspicions`. Monitoring systems,
-can subscribe without a hard dependency:
+`setting_changes`, `advisory_locks`, `user_level_locks`, and `suspicions`.
+Monitoring systems can subscribe without a hard dependency:
 
 ```ruby
 ActiveSupport::Notifications.subscribe("leaked_state.poollint") do |event|
@@ -181,14 +199,14 @@ bundle exec ruby benchmark/boundary_overhead.rb
 ```
 
 On 2026-07-28, a local Apple Silicon / Ruby 4.0 run measured the non-dirty
-boundary at **3.57 million iterations/second (280.4 ns/iteration)**. CI verifies
+boundary at **3.40 million iterations/second (293.8 ns/iteration)**. CI verifies
 behavior rather than asserting a machine-specific timing threshold.
 
 ## Development
 
 ```sh
 bundle install
-docker compose up -d --wait postgres
+docker compose up -d --wait postgres mysql
 bundle exec rspec
 bundle exec appraisal rails-7.1 rspec
 bundle exec appraisal rails-7.2 rspec
@@ -199,6 +217,9 @@ bundle exec rake build
 
 `DATABASE_URL` overrides the default local URL
 `postgresql://postgres:postgres@127.0.0.1:55432/poollint_test`.
+MySQL defaults to `root:mysql@127.0.0.1:33306/poollint_test`;
+override it with `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`,
+`MYSQL_USERNAME`, and `MYSQL_PASSWORD`.
 
 ## License
 
