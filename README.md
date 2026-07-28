@@ -40,15 +40,21 @@ The Railtie installs the SQL subscriber and connection callbacks during boot.
 PoolLint.configure do |config|
   config.inspection_point = :checkout
   config.mode = :log
-  config.inspection_timeout_ms = 250
+  config.inspection_timeout = 0.25
   config.check_probability = 1.0
   config.rebaseline_after_report = true
 
-  config.watched_settings = %w[search_path statement_timeout]
+  config.watched_settings = PoolLint::DEFAULT_PG_SETTINGS
+  config.track_custom_gucs = true
+  config.check_advisory_locks = true
+  config.suspicion_log_size = 20
+
+  # A hash allows selected values.
   config.allowed_settings = {
     "application_name" => /\Amy-app-/,
     "statement_timeout" => ->(value) { value.to_i <= 500 }
   }
+  # Or use ["application_name"] to ignore every value for named settings.
 
   config.ignore_if = ->(report) { report.setting_changes.empty? }
 end
@@ -61,14 +67,16 @@ Defaults have two axes:
 | `test` | `:checkin` | `:raise` |
 | all others | `:checkout` | `:log` |
 
-`:raise` raises `PoolLint::LeakDetected`. At `:checkin`, that mode is
-intended for tests because callback exceptions can prevent a connection from
-returning to the available queue.
+`:raise` raises `PoolLint::LeakedSessionState`
+(`PoolLint::LeakDetected` remains an alias). At `:checkin`, that mode
+is intended for tests because callback exceptions can prevent a connection
+from returning to the available queue.
 
 `check_probability` samples dirty inspections only. Initial baseline capture is
-never sampled. `inspection_timeout_ms` is applied with
+never sampled. `inspection_timeout` is expressed in seconds and applied with
 `SET LOCAL statement_timeout`, so the inspector restores the caller's setting
-when its short transaction ends.
+when its short transaction ends. The former millisecond accessor remains
+available as `inspection_timeout_ms`.
 
 ### Inspection point trade-offs
 
@@ -95,7 +103,14 @@ Rails 7.1, 7.2, and 8.0 is recorded in
 | differences in both baseline/current key directions | prepared statements |
 
 SQL classification accepts leading Query Logs or Marginalia comments, lowercase
-keywords, and line breaks. Inspector SQL is guarded against re-entry.
+keywords, and line breaks. Inspector SQL is guarded against re-entry. Suspicious
+SQL is truncated to 200 characters and kept in a bounded per-connection ring.
+
+`DEFAULT_PG_SETTINGS` contains `role`, `session_authorization`, `search_path`,
+`statement_timeout`, `lock_timeout`, `idle_in_transaction_session_timeout`, and
+`default_transaction_read_only`. Set `track_custom_gucs = false` to stop adding
+settings discovered from SQL to that list, or `check_advisory_locks = false` to
+skip `pg_locks` inspection.
 
 For a setting present in the initial baseline, the current value is compared
 with that baseline. For a dynamically discovered setting absent from the
@@ -123,16 +138,21 @@ end
 Suppression does not disable dirty tracking. `ignore_if` receives the complete
 report and can apply an application-specific policy.
 
-Every non-ignored report emits `leak.poollint` through
+Every non-ignored report emits `leaked_state.poollint` through
 `ActiveSupport::Notifications`. Its payload contains `inspection_point`,
 `setting_changes`, `advisory_locks`, and `suspicions`. Monitoring systems,
-including a Kannuki integration, can subscribe without a hard dependency:
+can subscribe without a hard dependency:
 
 ```ruby
-ActiveSupport::Notifications.subscribe("leak.poollint") do |event|
+ActiveSupport::Notifications.subscribe("leaked_state.poollint") do |event|
   SecurityEvents.publish("database_session_leak", event.payload)
 end
 ```
+
+When Kannuki is already loaded, PoolLint best-effort matches leaked
+numeric advisory keys against `Kannuki::LockManager.current_locks` and adds the
+human-readable lock name to the report. Kannuki is never required or loaded by
+PoolLint.
 
 ## PgBouncer
 

@@ -7,7 +7,7 @@ RSpec.describe PoolLint::InspectionRunner do
   end
 
   it "converts inspector failures to warnings" do
-    connection = Object.new
+    connection = Struct.new(:adapter_name).new("PostgreSQL")
     inspector = instance_double(PoolLint::Inspectors::PostgreSQL)
     allow(PoolLint::Inspectors::PostgreSQL).to receive(:new).and_return(inspector)
     allow(inspector).to receive(:establish_baseline).and_raise("database unavailable")
@@ -23,7 +23,7 @@ RSpec.describe PoolLint::InspectionRunner do
     KeyError.new("invalid inspector response")
   ].each do |failure|
     it "keeps pool callbacks usable after #{failure.class}" do
-      connection = Object.new
+      connection = Struct.new(:adapter_name).new("PostgreSQL")
       inspector = instance_double(PoolLint::Inspectors::PostgreSQL)
       allow(PoolLint::Inspectors::PostgreSQL).to receive(:new).and_return(inspector)
       allow(inspector).to receive(:establish_baseline).and_raise(failure)
@@ -34,14 +34,24 @@ RSpec.describe PoolLint::InspectionRunner do
   end
 
   it "does not run a dirty inspection when probability excludes it" do
-    connection = Object.new
+    connection = Struct.new(:adapter_name).new("PostgreSQL")
     state = PoolLint.connection_state(connection)
     state.capture_baseline(:baseline)
     state.mark_dirty(kind: :set, setting: "role", sql: "SET ROLE x", call_site: nil)
     PoolLint.configuration.check_probability = 0.0
-    allow(PoolLint::Inspectors::PostgreSQL).to receive(:new).and_call_original
+    inspector = instance_spy(PoolLint::Inspectors::PostgreSQL)
+    allow(PoolLint::Inspectors::PostgreSQL).to receive(:new).and_return(inspector)
 
     described_class.call(connection, :checkout)
-    expect(PoolLint::Inspectors::PostgreSQL).not_to have_received(:new)
+    expect(inspector).not_to have_received(:inspect)
+  end
+
+  it "does not attach state or execute SQL for unsupported adapters" do
+    connection = Struct.new(:adapter_name).new("SQLite")
+    allow(PoolLint::ConnectionState).to receive(:fetch)
+
+    described_class.call(connection, :checkout)
+
+    expect(PoolLint::ConnectionState).not_to have_received(:fetch)
   end
 end

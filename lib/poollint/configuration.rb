@@ -1,35 +1,65 @@
 # frozen_string_literal: true
 
 module PoolLint
+  DEFAULT_PG_SETTINGS = %w[
+    role
+    session_authorization
+    search_path
+    statement_timeout
+    lock_timeout
+    idle_in_transaction_session_timeout
+    default_transaction_read_only
+  ].freeze
+
   class Configuration
     INSPECTION_POINTS = %i[checkout checkin].freeze
     MODES = %i[log raise].freeze
 
     attr_reader :environment
     attr_accessor :allowed_settings,
+                  :check_advisory_locks,
                   :check_probability,
                   :ignore_if,
                   :inspection_point,
-                  :inspection_timeout_ms,
+                  :inspection_timeout,
                   :logger,
                   :mode,
                   :rebaseline_after_report,
-                  :suspicion_limit,
+                  :suspicion_log_size,
+                  :track_custom_gucs,
                   :watched_settings
 
     def initialize(environment: nil)
       @environment = environment || default_environment
       test_environment = @environment.to_s == "test"
-      @allowed_settings = {}
+      @allowed_settings = []
+      @check_advisory_locks = true
       @check_probability = 1.0
       @ignore_if = nil
       @inspection_point = test_environment ? :checkin : :checkout
-      @inspection_timeout_ms = 250
+      @inspection_timeout = 0.25
       @logger = nil
       @mode = test_environment ? :raise : :log
       @rebaseline_after_report = true
-      @suspicion_limit = 20
-      @watched_settings = []
+      @suspicion_log_size = 20
+      @track_custom_gucs = true
+      @watched_settings = DEFAULT_PG_SETTINGS.dup
+    end
+
+    def inspection_timeout_ms
+      (inspection_timeout * 1000).round
+    end
+
+    def inspection_timeout_ms=(value)
+      self.inspection_timeout = Float(value) / 1000
+    end
+
+    def suspicion_limit
+      suspicion_log_size
+    end
+
+    def suspicion_limit=(value)
+      self.suspicion_log_size = value
     end
 
     def test_environment?
@@ -37,11 +67,11 @@ module PoolLint
     end
 
     def validate!
-      validate_member!(:inspection_point, inspection_point, INSPECTION_POINTS)
-      validate_member!(:mode, mode, MODES)
+      validate_choices!
+      validate_flags!
       validate_probability!
-      validate_positive_integer!(:inspection_timeout_ms, inspection_timeout_ms)
-      validate_positive_integer!(:suspicion_limit, suspicion_limit)
+      validate_positive_number!(:inspection_timeout, inspection_timeout)
+      validate_positive_integer!(:suspicion_log_size, suspicion_log_size)
       validate_ignore_if!
       validate_allowed_settings!
       self.watched_settings = Array(watched_settings).map { |name| normalize_setting(name) }.uniq
@@ -61,9 +91,26 @@ module PoolLint
     end
 
     def validate_allowed_settings!
-      return if allowed_settings.is_a?(Hash)
+      return if allowed_settings.is_a?(Array) || allowed_settings.is_a?(Hash)
 
-      raise ArgumentError, "allowed_settings must be a Hash"
+      raise ArgumentError, "allowed_settings must be an Array or Hash"
+    end
+
+    def validate_boolean!(name, value)
+      return if [true, false].include?(value)
+
+      raise ArgumentError, "#{name} must be true or false"
+    end
+
+    def validate_choices!
+      validate_member!(:inspection_point, inspection_point, INSPECTION_POINTS)
+      validate_member!(:mode, mode, MODES)
+    end
+
+    def validate_flags!
+      validate_boolean!(:check_advisory_locks, check_advisory_locks)
+      validate_boolean!(:rebaseline_after_report, rebaseline_after_report)
+      validate_boolean!(:track_custom_gucs, track_custom_gucs)
     end
 
     def validate_ignore_if!
@@ -83,6 +130,12 @@ module PoolLint
       return if value.is_a?(Integer) && value.positive?
 
       raise ArgumentError, "#{name} must be a positive Integer"
+    end
+
+    def validate_positive_number!(name, value)
+      return if value.is_a?(Numeric) && value.positive?
+
+      raise ArgumentError, "#{name} must be a positive number"
     end
 
     def validate_probability!

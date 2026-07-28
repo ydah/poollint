@@ -5,7 +5,7 @@ module PoolLint
 
   class InspectionTimeout < Error; end
 
-  class LeakDetected < Error
+  class LeakedSessionState < Error
     attr_reader :report
 
     def initialize(report)
@@ -13,4 +13,6 @@ module PoolLint
       super(report.to_s)
     end
   end
+
+  LeakDetected = LeakedSessionState
 end

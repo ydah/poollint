@@ -5,7 +5,7 @@ module PoolLint
     UNCONFIGURED = Object.new.freeze
 
     def initialize(rules)
-      @rules = rules
+      @rules = normalize(rules)
     end
 
     def allow?(name, value)
@@ -19,6 +19,14 @@ module PoolLint
       when Array then rule.include?(value)
       else rule == value
       end
+    end
+
+    private
+
+    def normalize(rules)
+      return rules unless rules.is_a?(Array)
+
+      rules.to_h { |name| [name.to_s, true] }
     end
   end
 end

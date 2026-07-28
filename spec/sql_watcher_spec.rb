@@ -82,5 +82,22 @@ RSpec.describe PoolLint::SqlWatcher do
 
       expect(PoolLint.connection_state(connection)).not_to be_dirty
     end
+
+    it "does not dynamically monitor custom GUCs when tracking is disabled" do
+      connection = Object.new
+      PoolLint.configuration.track_custom_gucs = false
+
+      described_class.process(
+        connection: connection,
+        name: "SQL",
+        sql: "SET myapp.tenant_id = '42'"
+      )
+
+      state = PoolLint.connection_state(connection)
+      expect(state).to be_dirty
+      expect(state.monitored_settings).to be_empty
+    ensure
+      PoolLint.configuration.track_custom_gucs = true
+    end
   end
 end

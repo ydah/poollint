@@ -4,7 +4,7 @@ require "active_support/notifications"
 
 module PoolLint
   class Notifier
-    EVENT_NAME = "leak.poollint"
+    EVENT_NAME = "leaked_state.poollint"
 
     def initialize(configuration)
       @configuration = configuration
@@ -16,7 +16,7 @@ module PoolLint
 
       ActiveSupport::Notifications.instrument(EVENT_NAME, report.to_h)
 
-      raise LeakDetected, report if @configuration.mode == :raise
+      raise LeakedSessionState, report if @configuration.mode == :raise
 
       PoolLint.log_warning(report.to_s)
     end

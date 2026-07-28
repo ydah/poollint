@@ -11,7 +11,6 @@ module PoolLint
 
         adapter = ActiveRecord::ConnectionAdapters::AbstractAdapter
         adapter.prepend(Lifecycle)
-        adapter.descendants.each { |descendant| install_callbacks(descendant) }
         install_callbacks(adapter)
         @installed = true
       end
@@ -19,7 +18,7 @@ module PoolLint
       private
 
       def install_callbacks(adapter)
-        adapter.set_callback(:checkout, :before, CHECKOUT_CALLBACK)
+        adapter.set_callback(:checkout, :after, CHECKOUT_CALLBACK)
         adapter.set_callback(:checkin, :before, CHECKIN_CALLBACK)
       end
     end

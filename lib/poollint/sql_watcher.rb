@@ -45,7 +45,8 @@ module PoolLint
           kind: detection.kind,
           setting: detection.setting,
           sql: payload[:sql],
-          call_site: application_call_site
+          call_site: application_call_site,
+          monitor_setting: PoolLint.configuration.track_custom_gucs
         )
       end
 

@@ -33,6 +33,7 @@ RSpec.describe PoolLint::Notifier do
 
     notifier.call(report)
 
+    expect(described_class::EVENT_NAME).to eq("leaked_state.poollint")
     expect(events.first.payload[:inspection_point]).to eq(:checkout)
   ensure
     ActiveSupport::Notifications.unsubscribe(subscriber)
@@ -43,6 +44,13 @@ RSpec.describe PoolLint::Notifier do
 
     expect { notifier.call(report) }
       .to raise_error(PoolLint::LeakDetected, /search_path/)
+  end
+
+  it "uses the public leaked-session-state exception name" do
+    PoolLint.configuration.mode = :raise
+
+    expect { notifier.call(report) }
+      .to raise_error(PoolLint::LeakedSessionState, /handed out/)
   end
 
   it "honors suppress and ignore_if" do

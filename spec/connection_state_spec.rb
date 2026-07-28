@@ -29,6 +29,25 @@ RSpec.describe PoolLint::ConnectionState do
     expect(state.suspicions.map(&:setting)).to eq(%w[two three])
   end
 
+  it "stores only the first 200 characters of suspicious SQL" do
+    state.mark_dirty(kind: :set, setting: "x", sql: "x" * 250, call_site: nil)
+
+    expect(state.suspicions.first.sql).to eq("x" * 200)
+  end
+
+  it "can record a setting without dynamically monitoring it" do
+    state.mark_dirty(
+      kind: :set,
+      setting: "myapp.tenant",
+      sql: "SET myapp.tenant = 1",
+      call_site: nil,
+      monitor_setting: false
+    )
+
+    expect(state.monitored_settings).to be_empty
+    expect(state.suspicions.first.setting).to eq("myapp.tenant")
+  end
+
   it "attaches only one state object to a connection" do
     connection = Object.new
 

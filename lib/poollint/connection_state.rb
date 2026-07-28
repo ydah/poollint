@@ -41,10 +41,10 @@ module PoolLint
       @mutex.synchronize { @dirty }
     end
 
-    def mark_dirty(kind:, setting:, sql:, call_site:)
+    def mark_dirty(kind:, setting:, sql:, call_site:, monitor_setting: true)
       @mutex.synchronize do
         @dirty = true
-        @monitored_settings << setting if setting
+        @monitored_settings << setting if setting && monitor_setting
         @suspicions.add(
           Suspicion.new(
             kind: kind,

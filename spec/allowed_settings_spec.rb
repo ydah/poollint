@@ -18,4 +18,11 @@ RSpec.describe PoolLint::AllowedSettings do
   it "rejects an unconfigured value" do
     expect(allowed.allow?("search_path", "private")).to be(false)
   end
+
+  it "allows every value for names configured as an array" do
+    allowed_settings = described_class.new(%w[statement_timeout])
+
+    expect(allowed_settings.allow?("statement_timeout", "10s")).to be(true)
+    expect(allowed_settings.allow?("search_path", "private")).to be(false)
+  end
 end

@@ -34,6 +34,19 @@ RSpec.describe PoolLint::Inspectors::PostgreSQL, :postgresql do
     )
   end
 
+  it "detects a leaked statement_timeout without observing the inspector timeout" do
+    @connection.execute("SET statement_timeout = '2s'")
+    mark_dirty(@state, setting: "statement_timeout")
+
+    report = @inspector.inspect(@connection, @state, inspection_point: :checkout)
+
+    expect(report.setting_changes.first.to_h).to include(
+      name: "statement_timeout",
+      baseline: "0",
+      current: "2s"
+    )
+  end
+
   it "does not report a GUC that was reset" do
     @connection.execute("SET application_name = 'temporary'")
     @connection.execute("RESET application_name")
@@ -78,6 +91,18 @@ RSpec.describe PoolLint::Inspectors::PostgreSQL, :postgresql do
     expect(report.advisory_locks.map(&:object_key)).to include("42")
   end
 
+  it "skips advisory lock queries when lock inspection is disabled" do
+    PoolLint.configuration.check_advisory_locks = false
+    inspector = described_class.new(PoolLint.configuration)
+    inspector.establish_baseline(@connection, @state)
+    @connection.execute("SELECT pg_advisory_lock(43)")
+    mark_dirty(@state, kind: :advisory_lock)
+
+    expect(inspector.inspect(@connection, @state, inspection_point: :checkout)).to be_nil
+  ensure
+    @connection.execute("SELECT pg_advisory_unlock_all()")
+  end
+
   it "does not report an advisory lock owned by another backend" do
     pool = PoolLintPostgreSQLRecord.connection_pool
     other_connection = pool.checkout
@@ -94,7 +119,7 @@ RSpec.describe PoolLint::Inspectors::PostgreSQL, :postgresql do
   end
 
   it "raises a specific error when an inspector query exceeds the timeout" do
-    PoolLint.configuration.inspection_timeout_ms = 1
+    PoolLint.configuration.inspection_timeout = 0.001
     slow_inspector_class = Class.new(described_class) do
       private
 

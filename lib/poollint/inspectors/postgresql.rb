@@ -76,6 +76,8 @@ module PoolLint
       end
 
       def capture_advisory_locks(connection)
+        return [] unless @configuration.check_advisory_locks
+
         connection.select_all(ADVISORY_LOCKS_SQL, "PoolLint").map do |row|
           AdvisoryLock.new(
             database: row["database"],
@@ -83,7 +85,9 @@ module PoolLint
             object_key: row["objid"],
             object_sub_id: row["objsubid"].to_i,
             mode: row["mode"]
-          )
+          ).tap do |lock|
+            lock.human_name = KannukiLockResolver.name_for(lock)
+          end
         end
       end
 
@@ -107,11 +111,13 @@ module PoolLint
 
       def capture_with_timeout(connection, names)
         snapshot = nil
-        timeout_ms = Integer(@configuration.inspection_timeout_ms)
+        timeout_ms = (@configuration.inspection_timeout * 1000).ceil
         ExecutionState.while_inspecting do
           connection.transaction(requires_new: true, joinable: false) do
+            original_timeout = capture_statement_timeout(connection, names)
             connection.execute("SET LOCAL statement_timeout = #{timeout_ms}")
             snapshot = capture_snapshot(connection, names)
+            restore_statement_timeout(snapshot, original_timeout)
             raise ActiveRecord::Rollback
           end
         end
@@ -120,6 +126,12 @@ module PoolLint
         raise InspectionTimeout, "inspection exceeded statement_timeout" if query_canceled?(e)
 
         raise
+      end
+
+      def capture_statement_timeout(connection, names)
+        return unless names.include?("statement_timeout")
+
+        connection.select_value("SELECT current_setting('statement_timeout')")
       end
 
       def comparison_for(name, baseline_value, current_value)
@@ -158,6 +170,16 @@ module PoolLint
         active_record_timeout = defined?(ActiveRecord::QueryCanceled) &&
                                 error.is_a?(ActiveRecord::QueryCanceled)
         active_record_timeout || error.cause&.class&.name == "PG::QueryCanceled"
+      end
+
+      def restore_statement_timeout(snapshot, original_timeout)
+        return unless original_timeout
+
+        captured = snapshot.settings.fetch("statement_timeout")
+        snapshot.settings["statement_timeout"] = SettingValue.new(
+          setting: original_timeout,
+          reset_value: captured.reset_value
+        )
       end
 
       def setting_changes(baseline, snapshot)

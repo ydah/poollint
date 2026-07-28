@@ -10,6 +10,8 @@ module PoolLint
   )
 
   class SuspicionLog
+    SQL_LIMIT = 200
+
     def initialize(limit:)
       @limit = limit
       @entries = []
@@ -17,7 +19,7 @@ module PoolLint
 
     def add(suspicion)
       @entries.shift if @entries.length >= @limit
-      @entries << suspicion
+      @entries << normalized(suspicion)
     end
 
     def clear
@@ -26,6 +28,14 @@ module PoolLint
 
     def entries
       @entries.dup
+    end
+
+    private
+
+    def normalized(suspicion)
+      suspicion.dup.tap do |entry|
+        entry.sql = entry.sql.to_s.slice(0, SQL_LIMIT)
+      end
     end
   end
 end

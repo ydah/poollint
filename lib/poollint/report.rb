@@ -16,10 +16,15 @@ module PoolLint
     :object_key,
     :object_sub_id,
     :mode,
+    :human_name,
     keyword_init: true
   ) do
     def fingerprint
       [database, class_id, object_key, object_sub_id, mode]
+    end
+
+    def numeric_key
+      (class_id.to_i << 32) | object_key.to_i
     end
   end
 
@@ -47,41 +52,73 @@ module PoolLint
     end
 
     def to_s
-      lines = ["PoolLint detected leaked PostgreSQL session state at #{inspection_point}."]
+      lines = [
+        "PoolLint::LeakedSessionState",
+        "",
+        boundary_message
+      ]
       append_setting_changes(lines)
       append_advisory_locks(lines)
       append_suspicions(lines)
+      append_remediation(lines)
       lines.join("\n")
     end
 
     private
 
     def append_advisory_locks(lines)
-      return if advisory_locks.empty?
-
-      lines << "Advisory locks still held:"
       advisory_locks.each do |lock|
-        lines << "  #{lock.mode} (#{lock.class_id}, #{lock.object_key}, #{lock.object_sub_id})"
+        lines << ""
+        lines << "Leaked advisory lock:"
+        lines << "  name: #{lock.human_name}" if lock.human_name
+        lines << "  key: (classid=#{lock.class_id}, objid=#{lock.object_key}, mode=#{lock.mode})"
+        location = latest_suspicion(kind: :advisory_lock)&.call_site
+        lines << "  acquired at: #{location}" if location
       end
     end
 
     def append_setting_changes(lines)
-      return if setting_changes.empty?
-
-      lines << "Changed settings:"
       setting_changes.each do |change|
         expected = change.comparison == :baseline ? change.baseline : change.reset_value
-        lines << "  #{change.name}: expected #{expected.inspect}, got #{change.current.inspect}"
+        lines << ""
+        lines << "Changed session setting:"
+        lines << "  #{change.name}"
+        lines << "  expected: #{expected.inspect}"
+        lines << "  actual:   #{change.current.inspect}"
+        location = latest_suspicion(setting: change.name)&.call_site
+        lines << "  last SET at: #{location}" if location
       end
     end
 
     def append_suspicions(lines)
       return if suspicions.empty?
 
+      lines << ""
       lines << "Suspicious statements:"
       suspicions.each do |suspicion|
         location = suspicion.call_site ? " (#{suspicion.call_site})" : ""
         lines << "  #{suspicion.sql.to_s.strip}#{location}"
+      end
+    end
+
+    def append_remediation(lines)
+      lines << ""
+      lines << "Reset the state before releasing the connection"
+      lines << "(for example, RESET ROLE / RESET search_path / pg_advisory_unlock_all()),"
+      lines << "or ensure cleanup runs in an ensure block."
+    end
+
+    def boundary_message
+      if inspection_point == :checkin
+        return "Connection was returned to the pool with modified session state."
+      end
+
+      "Connection was handed out with session state left over\nfrom a previous owner."
+    end
+
+    def latest_suspicion(kind: nil, setting: nil)
+      suspicions.reverse.find do |suspicion|
+        (!kind || suspicion.kind == kind) && (!setting || suspicion.setting == setting)
       end
     end
   end
