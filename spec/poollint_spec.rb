@@ -2,6 +2,6 @@
 
 RSpec.describe PoolLint do
   it "has a version number" do
-    expect(PoolLint::VERSION).not_to be nil
+    expect(PoolLint::VERSION).not_to be_nil
   end
 end

@@ -20,4 +20,14 @@ RSpec.describe PoolLint::ExecutionState do
       expect(described_class.inspecting?).to be(false)
     end
   end
+
+  describe ".suppress" do
+    it "scopes suppression to the block" do
+      described_class.suppress do
+        expect(described_class.suppressed?).to be(true)
+      end
+
+      expect(described_class.suppressed?).to be(false)
+    end
+  end
 end
