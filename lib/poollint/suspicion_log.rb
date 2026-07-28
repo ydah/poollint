@@ -6,6 +6,8 @@ module PoolLint
     :setting,
     :sql,
     :call_site,
+    :lock_operation,
+    :lock_name,
     keyword_init: true
   )
 

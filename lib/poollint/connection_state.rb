@@ -49,19 +49,26 @@ module PoolLint
       @mutex.synchronize { @dirty }
     end
 
-    def mark_dirty(kind:, setting:, sql:, call_site:, monitor_setting: true)
+    def mark_dirty(kind:, setting:, sql:, call_site:, **tracking)
       @mutex.synchronize do
         @dirty = true
-        @monitored_settings << setting if setting && monitor_setting
+        @monitored_settings << setting if setting && tracking.fetch(:monitor_setting, true)
+        track_user_lock(tracking[:lock_operation], tracking[:lock_name])
         @suspicions.add(
           Suspicion.new(
             kind: kind,
             setting: setting,
             sql: sql,
-            call_site: call_site
+            call_site: call_site,
+            lock_operation: tracking[:lock_operation],
+            lock_name: tracking[:lock_name]
           )
         )
       end
+    end
+
+    def inferred_user_locks
+      @mutex.synchronize { @inferred_user_locks.dup }
     end
 
     def monitored_settings
@@ -90,8 +97,32 @@ module PoolLint
 
     def clear_tracking
       @dirty = false
+      @inferred_user_locks = {}
       @monitored_settings = Set.new
       @suspicions.clear
+    end
+
+    def track_user_lock(operation, name)
+      case operation
+      when :acquire
+        key = name || "<dynamic>"
+        @inferred_user_locks[key] = @inferred_user_locks.fetch(key, 0) + 1
+      when :release
+        release_user_lock(name)
+      when :release_all
+        @inferred_user_locks.clear
+      end
+    end
+
+    def release_user_lock(name)
+      return unless name && @inferred_user_locks.key?(name)
+
+      remaining = @inferred_user_locks.fetch(name) - 1
+      if remaining.positive?
+        @inferred_user_locks[name] = remaining
+      else
+        @inferred_user_locks.delete(name)
+      end
     end
   end
 end

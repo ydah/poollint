@@ -9,7 +9,10 @@ RSpec.describe PoolLint::Configuration do
       mode: :log,
       inspection_timeout: 0.25
     )
-    expect(configuration.watched_settings).to eq(PoolLint::DEFAULT_PG_SETTINGS)
+    expect(configuration).to have_attributes(
+      watched_settings: PoolLint::DEFAULT_PG_SETTINGS,
+      mysql_watched_settings: PoolLint::DEFAULT_MYSQL_SETTINGS
+    )
     expect(configuration).to have_attributes(track_custom_gucs: true, check_advisory_locks: true)
   end
 
@@ -53,5 +56,15 @@ RSpec.describe PoolLint::Configuration do
 
     expect(array_configuration.validate!).to be(array_configuration)
     expect(hash_configuration.validate!).to be(hash_configuration)
+  end
+
+  it "normalizes and validates MySQL variable names" do
+    configuration = described_class.new
+    configuration.mysql_watched_settings = ["SQL_MODE", :time_zone]
+
+    expect(configuration.validate!.mysql_watched_settings).to eq(%w[sql_mode time_zone])
+
+    configuration.mysql_watched_settings = ["sql_mode; DROP TABLE users"]
+    expect { configuration.validate! }.to raise_error(ArgumentError, /MySQL session variable/)
   end
 end

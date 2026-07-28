@@ -11,6 +11,8 @@ RSpec.describe PoolLint::SqlWatcher do
       "SET SESSION application_name = 'worker'" => [:set, "application_name"],
       "SET NAMES 'UTF8'" => [:set, "client_encoding"],
       "SET SCHEMA tenant_1" => [:set, "search_path"],
+      "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED" => [:set, "transaction_isolation"],
+      "SET SESSION TRANSACTION READ ONLY" => [:set, "transaction_read_only"],
       "RESET search_path" => [:reset, "search_path"],
       "reset all;" => [:reset, nil]
     }.each do |sql, expected|
@@ -51,6 +53,18 @@ RSpec.describe PoolLint::SqlWatcher do
 
     it "ignores transaction advisory locks" do
       expect(described_class.detect("SELECT pg_advisory_xact_lock(42)")).to be_nil
+    end
+
+    {
+      "SELECT GET_LOCK('orders/42', 0)" => [:acquire, "orders/42"],
+      "select release_lock(\"orders/42\")" => [:release, "orders/42"],
+      "SELECT RELEASE_ALL_LOCKS()" => [:release_all, nil]
+    }.each do |sql, expected|
+      it "tracks MySQL user lock call #{sql.inspect}" do
+        detection = described_class.detect(sql)
+
+        expect([detection.lock_operation, detection.lock_name]).to eq(expected)
+      end
     end
   end
 
@@ -98,6 +112,20 @@ RSpec.describe PoolLint::SqlWatcher do
       expect(state.monitored_settings).to be_empty
     ensure
       PoolLint.configuration.track_custom_gucs = true
+    end
+
+    it "records inferred MySQL lock balances" do
+      connection = Object.new
+
+      described_class.process(
+        connection: connection,
+        name: "SQL",
+        sql: "SELECT GET_LOCK('orders/42', 0)"
+      )
+
+      state = PoolLint.connection_state(connection)
+      expect(state.inferred_user_locks).to eq("orders/42" => 1)
+      expect(state.suspicions.first.kind).to eq(:user_level_lock)
     end
   end
 end

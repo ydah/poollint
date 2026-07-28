@@ -16,6 +16,7 @@ RSpec.describe PoolLint::Notifier do
         )
       ],
       advisory_locks: [],
+      user_level_locks: [],
       suspicions: []
     )
   end

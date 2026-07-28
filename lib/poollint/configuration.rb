@@ -10,6 +10,14 @@ module PoolLint
     idle_in_transaction_session_timeout
     default_transaction_read_only
   ].freeze
+  DEFAULT_MYSQL_SETTINGS = %w[
+    sql_mode
+    time_zone
+    transaction_isolation
+    transaction_read_only
+    lock_wait_timeout
+    max_execution_time
+  ].freeze
 
   class Configuration
     INSPECTION_POINTS = %i[checkout checkin].freeze
@@ -24,6 +32,7 @@ module PoolLint
                   :inspection_timeout,
                   :logger,
                   :mode,
+                  :mysql_watched_settings,
                   :rebaseline_after_report,
                   :suspicion_log_size,
                   :track_custom_gucs,
@@ -40,6 +49,7 @@ module PoolLint
       @inspection_timeout = 0.25
       @logger = nil
       @mode = test_environment ? :raise : :log
+      @mysql_watched_settings = DEFAULT_MYSQL_SETTINGS.dup
       @rebaseline_after_report = true
       @suspicion_log_size = 20
       @track_custom_gucs = true
@@ -75,6 +85,7 @@ module PoolLint
       validate_ignore_if!
       validate_allowed_settings!
       self.watched_settings = Array(watched_settings).map { |name| normalize_setting(name) }.uniq
+      self.mysql_watched_settings = normalize_mysql_settings
       self
     end
 
@@ -88,6 +99,17 @@ module PoolLint
 
     def normalize_setting(name)
       name.to_s.downcase
+    end
+
+    def normalize_mysql_settings
+      Array(mysql_watched_settings).map do |name|
+        normalized = normalize_setting(name)
+        unless normalized.match?(/\A[a-z_][a-z0-9_]*\z/)
+          raise ArgumentError, "invalid MySQL session variable: #{name}"
+        end
+
+        normalized
+      end.uniq
     end
 
     def validate_allowed_settings!

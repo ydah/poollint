@@ -12,6 +12,17 @@ RSpec.describe PoolLint::ConnectionState do
     )
   end
 
+  def mark_user_lock(operation)
+    state.mark_dirty(
+      kind: :user_level_lock,
+      setting: nil,
+      sql: "SELECT #{operation == :acquire ? 'GET_LOCK' : 'RELEASE_LOCK'}('orders', 0)",
+      call_site: nil,
+      lock_operation: operation,
+      lock_name: "orders"
+    )
+  end
+
   it "keeps dirty tracking and baseline together" do
     state.capture_baseline(:baseline)
     mark("search_path")
@@ -66,5 +77,13 @@ RSpec.describe PoolLint::ConnectionState do
 
     described_class.attach(connection, state)
     expect(described_class.attached?(connection, state)).to be(true)
+  end
+
+  it "tracks inferred MySQL lock acquisition and release counts" do
+    mark_user_lock(:acquire)
+    mark_user_lock(:acquire)
+    mark_user_lock(:release)
+
+    expect(state.inferred_user_locks).to eq("orders" => 1)
   end
 end

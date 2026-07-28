@@ -28,18 +28,42 @@ module PoolLint
     end
   end
 
-  class Report
-    attr_reader :advisory_locks, :inspection_point, :setting_changes, :suspicions
+  UserLevelLock = Struct.new(
+    :name,
+    :acquisition_count,
+    :mode,
+    :status,
+    :confidence,
+    keyword_init: true
+  ) do
+    def fingerprint
+      [name, mode, status]
+    end
+  end
 
-    def initialize(inspection_point:, setting_changes:, advisory_locks:, suspicions:)
+  class Report
+    attr_reader :advisory_locks,
+                :inspection_point,
+                :setting_changes,
+                :suspicions,
+                :user_level_locks
+
+    def initialize(
+      inspection_point:,
+      setting_changes:,
+      advisory_locks:,
+      suspicions:,
+      user_level_locks: []
+    )
       @inspection_point = inspection_point
       @setting_changes = setting_changes
       @advisory_locks = advisory_locks
       @suspicions = suspicions
+      @user_level_locks = user_level_locks
     end
 
     def leak?
-      setting_changes.any? || advisory_locks.any?
+      setting_changes.any? || advisory_locks.any? || user_level_locks.any?
     end
 
     def to_h
@@ -47,6 +71,7 @@ module PoolLint
         inspection_point: inspection_point,
         setting_changes: setting_changes.map(&:to_h),
         advisory_locks: advisory_locks.map(&:to_h),
+        user_level_locks: user_level_locks.map(&:to_h),
         suspicions: suspicions.map(&:to_h)
       }
     end
@@ -59,6 +84,7 @@ module PoolLint
       ]
       append_setting_changes(lines)
       append_advisory_locks(lines)
+      append_user_level_locks(lines)
       append_suspicions(lines)
       append_remediation(lines)
       lines.join("\n")
@@ -90,6 +116,19 @@ module PoolLint
       end
     end
 
+    def append_user_level_locks(lines)
+      user_level_locks.each do |lock|
+        lines << ""
+        lines << "Leaked MySQL user-level lock:"
+        lines << "  name: #{lock.name}"
+        lines << "  confidence: #{lock.confidence}"
+        lines << "  acquisition count: #{lock.acquisition_count}" if lock.acquisition_count
+        lines << "  status: #{lock.status}" if lock.status
+        location = latest_suspicion(kind: :user_level_lock, lock_name: lock.name)&.call_site
+        lines << "  acquired at: #{location}" if location
+      end
+    end
+
     def append_suspicions(lines)
       return if suspicions.empty?
 
@@ -104,7 +143,8 @@ module PoolLint
     def append_remediation(lines)
       lines << ""
       lines << "Reset the state before releasing the connection"
-      lines << "(for example, RESET ROLE / RESET search_path / pg_advisory_unlock_all()),"
+      lines << "(for example, RESET ROLE / RESET search_path / pg_advisory_unlock_all() /"
+      lines << "RELEASE_ALL_LOCKS()),"
       lines << "or ensure cleanup runs in an ensure block."
     end
 
@@ -116,9 +156,11 @@ module PoolLint
       "Connection was handed out with session state left over\nfrom a previous owner."
     end
 
-    def latest_suspicion(kind: nil, setting: nil)
+    def latest_suspicion(kind: nil, setting: nil, lock_name: nil)
       suspicions.reverse.find do |suspicion|
-        (!kind || suspicion.kind == kind) && (!setting || suspicion.setting == setting)
+        (!kind || suspicion.kind == kind) &&
+          (!setting || suspicion.setting == setting) &&
+          (!lock_name || suspicion.lock_name == lock_name)
       end
     end
   end
