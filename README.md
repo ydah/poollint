@@ -1,4 +1,4 @@
-# PoolLint
+# PoolLint [![Gem Version](https://badge.fury.io/rb/poollint.svg)](https://badge.fury.io/rb/poollint) [![CI](https://github.com/ydah/poollint/actions/workflows/ci.yml/badge.svg)](https://github.com/ydah/poollint/actions/workflows/ci.yml)
 
 PoolLint detects PostgreSQL and MySQL session state that leaks through
 an Active Record connection pool.
