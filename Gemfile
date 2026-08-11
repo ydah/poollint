@@ -15,6 +15,6 @@ group :development, :test do
   gem "rspec", "~> 3.13"
   gem "rubocop", "~> 1.75", require: false
   gem "rubocop-rspec", "~> 3.5", require: false
-  gem "sqlite3", "~> 1.7"
+  gem "sqlite3", "~> 2.9"
   gem "trilogy", "~> 2.7"
 end
